@@ -1,27 +1,59 @@
+#!/bin/bash lein-exec
+
 (use  '[leiningen.exec :only [deps]])
 (deps '[[org.clojure/math.numeric-tower "0.0.4"]])
 
 (ns infix
   "Infix notation macro, inspired by:
    http://www.goodmath.org/blog/2014/05/04/combinator-parsing-part-1/"
-  (:require [clojure.math.numeric-tower :refer :all])
+  (:require [clojure.math.numeric-tower :as math])
   (:refer-clojure :exclude [symbol sequence]))
 
-;; Number/symbol tokens
+(def ^:dynamic *known-constants*
+  {'e  Math/E
+   'pi Math/PI
+   'meaning-of-life 42})
 
-(defn number [[first & rest]]
-  (when (number? first)
+(def ^:dynamic *known-functions*
+  {'abs   'math/abs
+   'gcd   'math/gcd
+   'lcm   'math/lcm
+   'floor 'math/floor
+   'ceil  'math/ceil
+   'round 'math/round
+   'sqrt  'math/sqrt
+   'acos  #(Math/acos %)
+   'asin  #(Math/asin %)
+   'atan  #(Math/atan %)
+   'atan2 #(Math/atan2 %1 %2)
+   'cbrt  #(Math/cbrt %)
+   'cos   #(Math/cos %)
+   'cosh  #(Math/cosh %)
+   'exp   #(Math/exp %)
+   'ln    #(Math/log %)
+   'log   #(/ (Math/log10 %1) (Math/log %2))
+   'log10 #(Math/log10 %)
+   'sin   #(Math/sin %)
+   'sinh  #(Math/sinh %)
+   'tan   #(Math/tan %)
+   'tanh  #(Math/tanh %)})
+
+;; Literal/symbol tokens
+
+(defn literal [[first & rest]]
+  (when (some #(% first) [number? keyword? string? char?
+                          #(= (type %) java.util.regex.Pattern)])
     [rest first]))
 
 (defn symbol [[first & rest]]
   (when (symbol? first)
-    [rest first]))
+    [rest (*known-constants* first first)]))
 
 ;; Operator tokens
 
 (defn pow [[first & rest]]
   (when (= '** first)
-    [rest 'expt]))
+    [rest 'math/expt]))
 
 (defn mul [[first & rest]]
   (when (= '* first)
@@ -112,6 +144,11 @@
     (recur [(list operator first second) more])
     first))
 
+(defn apply-function
+  [[func args]]
+  (cons (*known-functions* func func)
+        args))
+
 ;; Grammar
 
 (declare expression)
@@ -133,15 +170,15 @@
 
 (def function
   "Function application (a symbol followed by a parenthesised list of expressions)"
-  (action (partial apply cons)
+  (action apply-function
           (sequence symbol paren)))
 
 (def simple
-  "A single function, symbol, number or parenthesised expression,
+  "A single function, symbol, literal or parenthesised expression,
    preceded by zero or more unary + and/or - operators"
   (action collapse-signs
           (sequence (repetition (choice add sub))
-                    (choice function symbol number parenthesised))))
+                    (choice function symbol literal parenthesised))))
 
 (def factor
   (action right-assoc
@@ -171,28 +208,31 @@
 
 ;; Macro
 
-(defmacro $= [& tokens]
+(defmacro $ [& tokens]
   (parse tokens))
 
 ;; Tests/examples
 
 (defn sin [x] (Math/sin x))
 
-(prn "A:" ($= sin(3.14) ))
+(prn "A1:" ($ sin(2 * pi / 3) ))
+(prn "A2:" #infix/$ (sin(2 * pi / 3)))
 
 (defn foo [& m]
   (clojure.string/join "," m))
 
-(prn "B:" ($= foo((2 + 1.9) / 25, 3 ** (1 / 0.7), 1 + - + -1)))
+(prn "B:" ($ foo((2 + 1.9) / 25, 3 ** (1 / 0.7), 1 + - + -1)))
 
 (def a 6)
 (def b 23)
 (def c 2)
-(prn "C:" ($= (- b + sqrt(b ** 2 - 4 * a * c)) / (2 * a) )
-          ($= (- b - sqrt(b ** 2 - 4 * a * c)) / (2 * a) ))
+(prn "C:" ($ (- b + sqrt(b ** 2 - 4 * a * c)) / (2 * a) )
+    #in/fix[ (- b - sqrt(b ** 2 - 4 * a * c)) / (2 * a) ])
 
 ;; TODO:
 ;; - check whole input is consumed
 ;; - better error handling
 ;; - more operators: bitwise/logical/other?
 ;; - handle missing spaces (where possible): 3 *2 or -a * 4 (but 3*2 can't work)
+;; - literal vectors/sets/maps?
+;; - member functions: a.foo(b c) => (.foo a b c)
