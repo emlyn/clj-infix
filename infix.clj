@@ -38,38 +38,43 @@
    'tan   #(Math/tan %)
    'tanh  #(Math/tanh %)})
 
+(defn success [result rest]
+  {:input  rest
+   :output result})
+
 ;; Literal/symbol tokens
 
 (defn literal [[first & rest]]
   (when (some #(% first) [number? keyword? string? char?
                           #(= (type %) java.util.regex.Pattern)])
-    [rest first]))
+    (success first rest)))
 
 (defn symbol [[first & rest]]
   (when (symbol? first)
-    [rest (*known-constants* first first)]))
+    (success (*known-constants* first first)
+             rest)))
 
 ;; Operator tokens
 
 (defn pow [[first & rest]]
   (when (= '** first)
-    [rest 'math/expt]))
+    (success 'math/expt rest)))
 
 (defn mul [[first & rest]]
   (when (= '* first)
-    [rest '*]))
+    (success '* rest)))
 
 (defn div [[first & rest]]
   (when (= '/ first)
-    [rest '/]))
+    (success '/ rest)))
 
 (defn add [[first & rest]]
   (when (= '+ first)
-    [rest '+]))
+    (success '+ rest)))
 
 (defn sub [[first & rest]]
   (when (= '- first)
-    [rest '-]))
+    (success '- rest)))
 
 ;; Combinators
 
@@ -77,16 +82,16 @@
   "Parses an A followed by a B (followed by a ...).
    Succeeds if all parsers succeed, and returns all the outputs concatenated together"
   [& parsers]
-  #(loop [in %
-          [p & more] parsers
-          result []]
-     ;;(prn "s" in p more result)
-     (if-not p
-       [in result]
-       (when-let [[inp r] (p in)]
-         (recur inp
-                more
-                (conj result r))))))
+  (fn [inp]
+    (loop [in              inp
+           [parser & more] parsers
+           result          []]
+      (if-not parser
+        (success result in)
+        (when-let [{:keys [input output]} (parser in)]
+          (recur input
+                 more
+                 (conj result output)))))))
 
 (defn choice
   "Parses an A or if that fails, a B (or if that fails a ...).
@@ -100,8 +105,9 @@
   ([parser]
      (option nil parser))
   ([default parser]
-     #(or (parser %)
-          [% default])))
+     (fn [in]
+       (or (parser in)
+           (success default in)))))
 
 (defn repetition
   "Parse a series of at least min 'A's.
@@ -109,19 +115,21 @@
   ([parser]
      (repetition 0 parser))
   ([min parser]
-     #(loop [in %
-             result []]
-        (if-let [[inp r] (parser in)]
-          (recur inp
-                 (conj result r))
-          (when (>= (count result) min)
-            [in result])))))
+     (fn [inp]
+       (loop [in     inp
+              result []]
+         (if-let [{:keys [input output]} (parser in)]
+           (recur input
+                  (conj result output))
+           (when (>= (count result) min)
+             (success result in)))))))
 
 (defn action
   "Apply a function to the result of another parser."
   [func parser]
-  #(when-let [[in r] (parser %)]
-     [in (func r)]))
+  (fn [in]
+    (when-let [{:keys [input output]} (parser in)]
+      (success (func output) input))))
 
 ;; Actions
 
@@ -157,16 +165,16 @@
   "A parenthesised sequence of zero or more expressions"
   [[first & rest]]
   (when (list? first)
-    (let [[in r] ((repetition expression) first)]
-      ;; TODO: (assert (not (seq in)))
-      [rest r])))
+    (let [{:keys [input output]} ((repetition expression) first)]
+      ;; TODO: (assert (not (seq input)))
+      (success output rest))))
 
 (defn parenthesised
   "A single parenthesised expression"
   [in]
-  (when-let [[in r] (paren in)]
-    (when (= 1 (count r))
-      [in (first r)])))
+  (when-let [{:keys [input output]} (paren in)]
+    (when (= 1 (count output))
+      (success (first output) input))))
 
 (def function
   "Function application (a symbol followed by a parenthesised list of expressions)"
@@ -199,11 +207,11 @@
 
 (defn parse [s & [parser]]
   (apply prn "Parsing:" s)
-  (if-let [[rem res] ((or parser expression) s)]
-    (do (when (seq rem)
-          (prn "Oops:" rem)) ;; TODO: Make this an error
-        (prn "Result:" res)
-        res)
+  (if-let [{:keys [input output]} ((or parser expression) s)]
+    (do (when (seq input)
+          (prn "Oops:" input)) ;; TODO: Make this an error
+        (prn "Result:" output)
+        output)
     (prn "Fail")))
 
 ;; Macro
@@ -213,15 +221,20 @@
 
 ;; Tests/examples
 
+(parse '(1 + 1 ** 1 * 1))
+(println)
+
 (defn sin [x] (Math/sin x))
 
 (prn "A1:" ($ sin(2 * pi / 3) ))
 (prn "A2:" #infix/$ (sin(2 * pi / 3)))
+(println)
 
 (defn foo [& m]
   (clojure.string/join "," m))
 
 (prn "B:" ($ foo((2 + 1.9) / 25, 3 ** (1 / 0.7), 1 + - + -1)))
+(println)
 
 (def a 6)
 (def b 23)
@@ -236,3 +249,7 @@
 ;; - handle missing spaces (where possible): 3 *2 or -a * 4 (but 3*2 can't work)
 ;; - literal vectors/sets/maps?
 ;; - member functions: a.foo(b c) => (.foo a b c)
+;; - parse strings, e.g.: #in/fix "2*sin(x/7)**2"
+;; - maybe collapse (a + b + c) => (+ (+ a b) c) => (+ a b c)
+;; - maybe precompute constants? (10 * 10 / a) => (/ (* 10 10) a) => (/ 100 a)
+;; - numeric-tower version of cbrt (and general nth root?)
