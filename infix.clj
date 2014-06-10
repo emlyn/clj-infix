@@ -152,6 +152,14 @@
     (recur [(list operator first second) more])
     first))
 
+(defn left-assoc-collapse
+  [[firstval [[operator secondval] & more]]]
+  (if secondval
+    (let [[same rest] (split-with #(= operator (first %)) more)]
+      (recur [(apply list operator firstval secondval (map second same))
+              rest]))
+    firstval))
+
 (defn apply-function
   [[func args]]
   (cons (*known-functions* func func)
@@ -194,12 +202,12 @@
                     (repetition (sequence pow simple)))))
 
 (def term
-  (action left-assoc
+  (action left-assoc-collapse
           (sequence factor
                     (repetition (sequence (choice mul div) factor)))))
 
 (def expression
-  (action left-assoc
+  (action left-assoc-collapse
           (sequence term
                     (repetition (sequence (choice add sub) term)))))
 
@@ -241,6 +249,9 @@
 (def c 2)
 (prn "C:" ($ (- b + sqrt(b ** 2 - 4 * a * c)) / (2 * a) )
     #in/fix[ (- b - sqrt(b ** 2 - 4 * a * c)) / (2 * a) ])
+(println)
+
+(prn "D:" ($ 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 - 2 - 4 - 6 - 8 - 10))
 
 ;; TODO:
 ;; - check whole input is consumed
@@ -250,6 +261,5 @@
 ;; - literal vectors/sets/maps?
 ;; - member functions: a.foo(b c) => (.foo a b c)
 ;; - parse strings, e.g.: #in/fix "2*sin(x/7)**2"
-;; - maybe collapse (a + b + c) => (+ (+ a b) c) => (+ a b c)
 ;; - maybe precompute constants? (10 * 10 / a) => (/ (* 10 10) a) => (/ 100 a)
 ;; - numeric-tower version of cbrt (and general nth root?)
