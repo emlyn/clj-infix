@@ -1,4 +1,5 @@
 #!/bin/bash lein-exec
+# -*- mode: clojure -*-
 
 (use  '[leiningen.exec :only [deps]])
 (deps '[[org.clojure/math.numeric-tower "0.0.4"]])
