@@ -44,36 +44,36 @@
 
 ;; Literal/symbol tokens
 
-(defn literal [[first & rest]]
-  (when (some #(% first) [number? keyword? string? char?
+(defn literal [[firstval & rest]]
+  (when (some #(% firstval) [number? keyword? string? char?
                           #(= (type %) java.util.regex.Pattern)])
-    (success first rest)))
+    (success firstval rest)))
 
-(defn symbol [[first & rest]]
-  (when (symbol? first)
-    (success (*known-constants* first first)
+(defn symbol [[firstval & rest]]
+  (when (symbol? firstval)
+    (success (*known-constants* firstval firstval)
              rest)))
 
 ;; Operator tokens
 
-(defn pow [[first & rest]]
-  (when (= '** first)
+(defn pow [[firstval & rest]]
+  (when (= '** firstval)
     (success 'math/expt rest)))
 
-(defn mul [[first & rest]]
-  (when (= '* first)
+(defn mul [[firstval & rest]]
+  (when (= '* firstval)
     (success '* rest)))
 
-(defn div [[first & rest]]
-  (when (= '/ first)
+(defn div [[firstval & rest]]
+  (when (= '/ firstval)
     (success '/ rest)))
 
-(defn add [[first & rest]]
-  (when (= '+ first)
+(defn add [[firstval & rest]]
+  (when (= '+ firstval)
     (success '+ rest)))
 
-(defn sub [[first & rest]]
-  (when (= '- first)
+(defn sub [[firstval & rest]]
+  (when (= '- firstval)
     (success '- rest)))
 
 ;; Combinators
@@ -141,16 +141,16 @@
     expr))
 
 (defn right-assoc
-  [[first [[operator second] & more]]]
-  (if second
-    (list operator first (right-assoc [second more]))
-    first))
+  [[firstval [[operator secondval] & more]]]
+  (if secondval
+    (list operator firstval (right-assoc [secondval more]))
+    firstval))
 
 (defn left-assoc
-  [[first [[operator second] & more]]]
-  (if second
-    (recur [(list operator first second) more])
-    first))
+  [[firstval [[operator secondval] & more]]]
+  (if secondval
+    (recur [(list operator firstval secondval) more])
+    firstval))
 
 (defn left-assoc-collapse
   [[firstval [[operator secondval] & more]]]
@@ -171,9 +171,9 @@
 
 (defn paren
   "A parenthesised sequence of zero or more expressions"
-  [[first & rest]]
-  (when (list? first)
-    (let [{:keys [input output]} ((repetition expression) first)]
+  [[firstval & rest]]
+  (when (list? firstval)
+    (let [{:keys [input output]} ((repetition expression) firstval)]
       ;; TODO: (assert (not (seq input)))
       (success output rest))))
 
